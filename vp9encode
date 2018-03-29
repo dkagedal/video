@@ -1,0 +1,50 @@
+#!/bin/zsh
+func n() { $@ }
+if [[ $1 == "-n" ]]; then
+    func n() { echo $@ }
+    shift
+fi
+
+in=$1
+out=$2
+
+# ffmpeg params, except pass-speceif params.
+params=(
+    # Process all streams
+    -map 0
+    # Copy streams by default, eg subtitles.
+    -c copy
+)
+
+# Pass-specific params.
+pass1=(-pass 1)
+pass2=(-pass 2)
+
+# Video:
+
+# https://trac.ffmpeg.org/wiki/Encode/VP9
+# https://developers.google.com/media/vp9/settings/vod/
+params+=(-g 240 -c:v libvpx-vp9)
+resolution=$(ffprobe $in 2>&1 | sed -ne 's/^ *Stream .* Video:.* \([0-9]*x[0-9]*\) .*/\1/p')
+echo "Resolution: $resolution"
+case "$resolution" in
+    1920x1080)
+        params+=(-b:v 2000k -crf 31 -minrate 1000k -maxrate 3000k)
+        params+=(-tile-columns 2 -threads 8)
+        pass1+=(-speed 4)
+        pass2+=(-speed 2)
+        ;;
+    *)
+        echo "Unknown resolution: $resolution"
+        exit 1
+        ;;
+esac
+
+# Audio:
+
+params+=(-c:a libopus)
+# https://trac.ffmpeg.org/ticket/5718
+params+=($(ffprobe $in 2>&1 | sed -ne 's/^ *Stream #0:\(.*\)(...): Audio: [^,]*, [^,]*, 5.1(side),.*/-filter:\1 aformat=channel_layouts=5.1/p'))
+
+n ffmpeg -i "$in" $params $pass1 -f matroska -y /dev/null
+n ffmpeg -i "$in" $params $pass2 "$out"
