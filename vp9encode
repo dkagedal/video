@@ -1,14 +1,22 @@
 #!/bin/zsh
-func n() { $@ }
+#
+# Usage: vp9encode [-n] infile.mkv outfile.mkv
+
+func n() {
+    echo $@
+    $@
+}
 if [[ $1 == "-n" ]]; then
-    func n() { echo $@ }
+    func n() {
+        echo $@
+    }
     shift
 fi
 
 in=$1
 out=$2
 
-# ffmpeg params, except pass-speceif params.
+# ffmpeg params, except pass-specific params.
 params=(
     # Process all streams
     -map 0
@@ -20,17 +28,38 @@ params=(
 pass1=(-pass 1)
 pass2=(-pass 2)
 
-# Video:
+# Video parameters to convert all video streams to VP9:
 
 # https://trac.ffmpeg.org/wiki/Encode/VP9
 # https://developers.google.com/media/vp9/settings/vod/
-params+=(-g 240 -c:v libvpx-vp9)
+params+=(
+    # Keyframe spacing 240 frames
+    -g 240
+    # Use the vp9 codec for video
+    -c:v libvpx-vp9
+)
+
+# Extract the input resolution:
 resolution=$(ffprobe $in 2>&1 | sed -ne 's/^ *Stream .* Video:.* \([0-9]*x[0-9]*\) .*/\1/p')
 echo "Resolution: $resolution"
+
 case "$resolution" in
     1920x1080)
+        # Target bitrate 2Mbps, with constrained quality:
         params+=(-b:v 2000k -crf 31 -minrate 1000k -maxrate 3000k)
+        # Recommended settings for faster encoding:
         params+=(-tile-columns 2 -threads 8)
+        pass1+=(-speed 4)
+        pass2+=(-speed 2)
+        ;;
+    720x576)
+        # PAL is not listed on the Google VOD recommendations site, so I
+        # interpolate a bit
+
+        # Target bitrate 2Mbps, with constrained quality:
+        params+=(-b:v 1000k -crf 33 -minrate 400k -maxrate 1200k)
+        # Recommended settings for faster encoding:
+        params+=(-tile-columns 1 -threads 4)
         pass1+=(-speed 4)
         pass2+=(-speed 2)
         ;;
@@ -40,10 +69,14 @@ case "$resolution" in
         ;;
 esac
 
-# Audio:
+# Audio parameters to convert all audio to OPUS:
 
 params+=(-c:a libopus)
-# https://trac.ffmpeg.org/ticket/5718
+
+# There is currently a bug (https://trac.ffmpeg.org/ticket/5718) in
+# ffmpeg/libopus that makes it fail if the input channel layout is
+# "5.1(side)". This hack adds a filter that sets the output layout
+# to "5.1" in those audio streams.
 params+=($(ffprobe $in 2>&1 | sed -ne 's/^ *Stream #0:\(.*\)(...): Audio: [^,]*, [^,]*, 5.1(side),.*/-filter:\1 aformat=channel_layouts=5.1/p'))
 
 n ffmpeg -i "$in" $params $pass1 -f matroska -y /dev/null
