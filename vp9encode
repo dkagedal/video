@@ -63,6 +63,15 @@ case "$resolution" in
         pass1+=(-speed 4)
         pass2+=(-speed 2)
         ;;
+    720x480)
+        # The Google VOD recommendations site only lists 640x480, but we'll treat this the same.
+        # Target bitrate 2Mbps, with constrained quality:
+        params+=(-b:v 750k -crf 33 -minrate 375k -maxrate 1088k)
+        # Recommended settings for faster encoding:
+        params+=(-tile-columns 1 -threads 4)
+        pass1+=(-speed 4)
+        pass2+=(-speed 1)
+        ;;
     *)
         echo "Unknown resolution: $resolution"
         exit 1
