@@ -2,6 +2,7 @@ package ffmpeg
 
 import (
 	"bufio"
+	"context"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -9,6 +10,7 @@ import (
 )
 
 var (
+	durationRe   = regexp.MustCompile(`^  Duration: (..:..:..\...), start: 0.000000,.*$`)
 	streamRe     = regexp.MustCompile(`^ *Stream #\d+:(\d+)\((...)\): (\S+): (.*)$`)
 	resolutionRe = regexp.MustCompile(`^(\d+x\d+)(?: \[.*\])$`)
 	channelsRe   = regexp.MustCompile(`^(stereo|5.1(?:\(side\))?)$`)
@@ -16,10 +18,11 @@ var (
 
 type FileInfo struct {
 	Filename string
+	Duration string
 	Streams  []stream.Stream
 }
 
-func Probe(filename string) (FileInfo, error) {
+func Probe(ctx context.Context, filename string) (FileInfo, error) {
 	info := FileInfo{
 		Filename: filename,
 		Streams:  make([]stream.Stream, 0),
@@ -35,7 +38,9 @@ func Probe(filename string) (FileInfo, error) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		// fmt.Println("::: " + scanner.Text())
-		if sub := streamRe.FindStringSubmatch(scanner.Text()); sub != nil {
+		if sub := durationRe.FindStringSubmatch(scanner.Text()); sub != nil {
+			info.Duration = sub[1]
+		} else if sub := streamRe.FindStringSubmatch(scanner.Text()); sub != nil {
 			isdef := false
 			if strings.HasSuffix(sub[4], " (default)") {
 				isdef = true
