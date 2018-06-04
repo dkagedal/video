@@ -13,18 +13,24 @@ const (
 	Subtitle      = "Subtitle"
 )
 
+type ResolutionString string
+
 type Stream struct {
 	Id         string
 	Typ        Type
 	Lang       string
 	Codec      string
-	Resolution string
+	Resolution ResolutionString
 	Channels   string
 	Params     []string
 	IsDefault  bool
 }
 
 const repeat = `-"-`
+
+func (r ResolutionString) Normalized() ResolutionString {
+	return r
+}
 
 func formatParams(params []string) string {
 	return strings.Join(params, " / ")
@@ -56,7 +62,7 @@ func PrintTable(streams []Stream) {
 
 		primaryinfo := ""
 		if ps.Resolution != "" {
-			primaryinfo = ps.Resolution
+			primaryinfo = string(ps.Resolution)
 		} else if ps.Channels != "" {
 			primaryinfo = ps.Channels
 		}

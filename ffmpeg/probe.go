@@ -61,7 +61,7 @@ func Probe(ctx context.Context, filename string) (FileInfo, error) {
 
 			for _, p := range codecinfo[1:] {
 				if m := resolutionRe.FindStringSubmatch(p); m != nil {
-					s.Resolution = m[1]
+					s.Resolution = stream.ResolutionString(m[1])
 				} else if m := channelsRe.FindStringSubmatch(p); m != nil {
 					s.Channels = m[1]
 				} else {
@@ -72,4 +72,18 @@ func Probe(ctx context.Context, filename string) (FileInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+func (fi *FileInfo) fileResolution() stream.ResolutionString {
+	var resolution stream.ResolutionString
+	for _, s := range fi.Streams {
+		if s.Typ != stream.Video {
+			continue
+		}
+		if resolution != "" {
+			panic("Multiple video streams")
+		}
+		resolution = s.Resolution
+	}
+	return resolution
 }

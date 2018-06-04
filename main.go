@@ -17,7 +17,7 @@ func checkInput(info ffmpeg.FileInfo) {
 	nvideo := 0
 	for _, s := range info.Streams {
 		if s.Typ == stream.Video {
-			fmt.Printf("Codec: %s\n", s.Codec)
+			fmt.Printf("Video codec: %s\n", s.Codec)
 			if nvideo > 0 {
 				log.Fatal("Multiple video streams")
 			}
