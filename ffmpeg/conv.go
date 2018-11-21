@@ -72,6 +72,16 @@ func videoQualityArgs(cmd *[]string, fi *FileInfo, pass int) {
 	)
 }
 
+func hashString(s string) uint32 {
+	alg := fnv.New32a()
+	alg.Write([]byte(s))
+	return alg.Sum32()
+}
+
+func tmpFilePrefix(fi *FileInfo) string {
+	return fmt.Sprintf("vp9-%d", hashString(fi.Filename))
+}
+
 func Pass1(ctx context.Context, fi FileInfo) {
 	fmt.Printf("Pass 1:\n")
 	args := []string{
@@ -82,7 +92,7 @@ func Pass1(ctx context.Context, fi FileInfo) {
 		"-c", "copy",
 	}
 	videoQualityArgs(&args, &fi, 1)
-	args = append(args, "-passlogfile", fmt.Sprintf("vp9-%d", hashString(fi.Filename)), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
+	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	cmd.Stdout = os.Stdout
@@ -90,12 +100,6 @@ func Pass1(ctx context.Context, fi FileInfo) {
 	if err := cmd.Run(); err != nil {
 		panic("aborted during pass 1")
 	}
-}
-
-func hashString(s string) uint32 {
-	alg := fnv.New32a()
-	alg.Write([]byte(s))
-	return alg.Sum32()
 }
 
 func Pass2(ctx context.Context, fi FileInfo, destination string) {
@@ -122,7 +126,7 @@ func Pass2(ctx context.Context, fi FileInfo, destination string) {
 			args = append(args, "-filter:"+s.Id, "aformat=channel_layouts=5.1")
 		}
 	}
-	args = append(args, "-passlogfile", fmt.Sprintf("vp9-%d", hashString(fi.Filename)), "-pass", "2", destination)
+	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
 	fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	cmd.Stdout = os.Stdout
