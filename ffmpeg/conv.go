@@ -6,8 +6,10 @@ import (
 	"hash/fnv"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"time"
 	"video/stream"
 )
@@ -162,11 +164,27 @@ func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
 		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, progressBar(progress), spinner[i], eta.Truncate(time.Second))
 		i = (i + 1) % len(spinner)
 	}
-	fmt.Printf("\n")
+	fmt.Printf("\r\033[K%s%s\n", prefix, progressBar(1.0))
 	return nil
 }
 
-func Pass1(ctx context.Context, fi FileInfo) {
+func FindCrop(ctx context.Context, fi FileInfo) error {
+	fmt.Printf("Crop:   ")
+	args := []string{
+		"-i", fi.Filename,
+		"-t", "10", // stop after 10 seconds
+		"-vf", "cropdetect",
+		"-f", "null",
+		"-",
+	}
+	fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	//return runWithProgress("Crop:   ", fi, cmd)
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func Pass1(ctx context.Context, fi FileInfo) error {
 	fmt.Printf("Pass 1: ")
 	args := []string{
 		"-i", fi.Filename,
@@ -179,14 +197,10 @@ func Pass1(ctx context.Context, fi FileInfo) {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	err := runWithProgress("Pass 1: ", fi, cmd)
-	if err != nil {
-		fmt.Printf("\n%v\n", err)
-		panic("aborted during pass 1")
-	}
+	return runWithProgress("Pass 1: ", fi, cmd)
 }
 
-func Pass2(ctx context.Context, fi FileInfo, destination string) {
+func Pass2(ctx context.Context, fi FileInfo, destination string) error {
 	fmt.Printf("Pass 2: ")
 	args := []string{
 		"-i", fi.Filename,
@@ -213,9 +227,5 @@ func Pass2(ctx context.Context, fi FileInfo, destination string) {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	err := runWithProgress("Pass 2: ", fi, cmd)
-	if err != nil {
-		fmt.Printf("\n%v\n", err)
-		panic("aborted during pass 1")
-	}
+	return runWithProgress("Pass 2: ", fi, cmd)
 }

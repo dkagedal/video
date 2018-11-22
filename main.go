@@ -88,6 +88,16 @@ func main() {
 
 	destination := selectDestination(flag.Arg(1), source)
 	fmt.Printf("Saving to %s\n", destination)
-	ffmpeg.Pass1(ctx, info)
-	ffmpeg.Pass2(ctx, info, destination)
+	err = ffmpeg.FindCrop(ctx, info)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = ffmpeg.Pass1(ctx, info)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = ffmpeg.Pass2(ctx, info, destination)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
