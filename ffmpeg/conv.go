@@ -8,6 +8,7 @@ import (
 	"log"
 	"os/exec"
 	"regexp"
+	"time"
 	"video/stream"
 )
 
@@ -87,13 +88,7 @@ func tmpFilePrefix(fi *FileInfo) string {
 }
 
 type progress struct {
-	frame     string
-	fps       string
-	q         string
-	size      string
 	timestamp Duration
-	bitrate   string
-	speed     string
 	err       error
 }
 
@@ -105,13 +100,7 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 				return string(buffer[sub[i*2]:sub[i*2+1]])
 			}
 			p := progress{
-				frame:     match(1),
-				fps:       match(2),
-				q:         match(3),
-				size:      match(4),
 				timestamp: parseDuration(match(5)),
-				bitrate:   match(6),
-				speed:     match(7),
 			}
 			ch <- p
 			buffer = buffer[sub[1]:]
@@ -141,6 +130,13 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 	}
 }
 
+func progressBar(progress float64) string {
+	done := "####################"
+	notDone := "...................."
+	doneCount := int(progress * 20)
+	return fmt.Sprintf("[%s%s] %3d%%", done[:doneCount], notDone[doneCount:], int(progress*100))
+}
+
 func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -153,13 +149,18 @@ func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
 	}
 	ch := make(chan progress)
 	go readProgress(stderr, ch)
+	spinner := []string{".", " "}
+	i := 0
+	start := time.Now()
 	for p := range ch {
 		if p.err != nil {
 			fmt.Printf("\n")
 			return p.err
 		}
-		percentage := 100 * p.timestamp / fi.Length
-		fmt.Printf("\r%s%d%% %v / %v", prefix, percentage, p.timestamp, fi.Length)
+		progress := float64(p.timestamp) / float64(fi.Length)
+		eta := time.Duration(float64(time.Since(start).Nanoseconds()) / progress)
+		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, progressBar(progress), spinner[i], eta.Truncate(time.Second))
+		i = (i + 1) % len(spinner)
 	}
 	fmt.Printf("\n")
 	return nil
