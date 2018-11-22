@@ -91,7 +91,7 @@ type progress struct {
 	fps       string
 	q         string
 	size      string
-	timestamp string
+	timestamp Duration
 	bitrate   string
 	speed     string
 	err       error
@@ -109,7 +109,7 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 				fps:       match(2),
 				q:         match(3),
 				size:      match(4),
-				timestamp: match(5),
+				timestamp: parseDuration(match(5)),
 				bitrate:   match(6),
 				speed:     match(7),
 			}
@@ -141,6 +141,30 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 	}
 }
 
+func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Printf("\n")
+		return err
+	}
+	if err = cmd.Start(); err != nil {
+		fmt.Printf("\n")
+		return err
+	}
+	ch := make(chan progress)
+	go readProgress(stderr, ch)
+	for p := range ch {
+		if p.err != nil {
+			fmt.Printf("\n")
+			return p.err
+		}
+		percentage := 100 * p.timestamp / fi.Length
+		fmt.Printf("\r%s%d%% %v / %v", prefix, percentage, p.timestamp, fi.Length)
+	}
+	fmt.Printf("\n")
+	return nil
+}
+
 func Pass1(ctx context.Context, fi FileInfo) {
 	fmt.Printf("Pass 1: ")
 	args := []string{
@@ -154,23 +178,11 @@ func Pass1(ctx context.Context, fi FileInfo) {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	stderr, err := cmd.StderrPipe()
+	err := runWithProgress("Pass 1: ", fi, cmd)
 	if err != nil {
+		fmt.Printf("\n%v\n", err)
 		panic("aborted during pass 1")
 	}
-	if err = cmd.Start(); err != nil {
-		panic("aborted during pass 1")
-	}
-	ch := make(chan progress)
-	go readProgress(stderr, ch)
-	for p := range ch {
-		if p.err != nil {
-			fmt.Printf("\n%v\n", p.err)
-			panic("aborted during pass 1")
-		}
-		fmt.Printf("\rPass 1: %v / %v", p.timestamp, fi.Duration)
-	}
-	fmt.Printf("\n")
 }
 
 func Pass2(ctx context.Context, fi FileInfo, destination string) {
@@ -200,21 +212,9 @@ func Pass2(ctx context.Context, fi FileInfo, destination string) {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	stderr, err := cmd.StderrPipe()
+	err := runWithProgress("Pass 2: ", fi, cmd)
 	if err != nil {
-		panic("aborted during pass 2")
+		fmt.Printf("\n%v\n", err)
+		panic("aborted during pass 1")
 	}
-	if err = cmd.Start(); err != nil {
-		panic("aborted during pass 2")
-	}
-	ch := make(chan progress)
-	go readProgress(stderr, ch)
-	for p := range ch {
-		if p.err != nil {
-			fmt.Printf("\n%v\n", p.err)
-			panic("aborted during pass 2")
-		}
-		fmt.Printf("\rPass 2: %v / %v", p.timestamp, fi.Duration)
-	}
-	fmt.Printf("\n")
 }

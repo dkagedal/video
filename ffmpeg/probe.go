@@ -18,7 +18,7 @@ var (
 
 type FileInfo struct {
 	Filename string
-	Duration string
+	Length   Duration
 	Streams  []stream.Stream
 }
 
@@ -39,7 +39,7 @@ func Probe(ctx context.Context, filename string) (FileInfo, error) {
 	for scanner.Scan() {
 		// fmt.Println("::: " + scanner.Text())
 		if sub := durationRe.FindStringSubmatch(scanner.Text()); sub != nil {
-			info.Duration = sub[1]
+			info.Length = parseDuration(sub[1])
 		} else if sub := streamRe.FindStringSubmatch(scanner.Text()); sub != nil {
 			isdef := false
 			if strings.HasSuffix(sub[4], " (default)") {

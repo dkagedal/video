@@ -83,7 +83,7 @@ func main() {
 	}
 
 	stream.PrintTable(info.Streams)
-	fmt.Printf("Duration: %s\n", info.Duration)
+	fmt.Printf("Duration: %s\n", info.Length)
 	checkInput(info)
 
 	destination := selectDestination(flag.Arg(1), source)
