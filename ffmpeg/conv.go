@@ -88,7 +88,7 @@ func tmpFilePrefix(fi *FileInfo) string {
 }
 
 type progress struct {
-	timestamp Duration
+	timestamp time.Duration
 	err       error
 }
 

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 	"video/stream"
 )
 
@@ -18,7 +19,7 @@ var (
 
 type FileInfo struct {
 	Filename string
-	Length   Duration
+	Length   time.Duration
 	Streams  []stream.Stream
 }
 
