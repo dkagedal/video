@@ -142,7 +142,7 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 }
 
 func Pass1(ctx context.Context, fi FileInfo) {
-	fmt.Printf("Pass 1:")
+	fmt.Printf("Pass 1: ")
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
@@ -174,7 +174,7 @@ func Pass1(ctx context.Context, fi FileInfo) {
 }
 
 func Pass2(ctx context.Context, fi FileInfo, destination string) {
-	fmt.Printf("Pass 2:\n")
+	fmt.Printf("Pass 2: ")
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
