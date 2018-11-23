@@ -10,7 +10,12 @@ import (
 	"path"
 	"strings"
 	"video/ffmpeg"
+	"video/progress"
 	"video/stream"
+)
+
+var (
+	cropFlag = flag.Bool("crop", false, "Crop the video to remove black bars.")
 )
 
 func checkInput(info ffmpeg.FileInfo) {
@@ -88,16 +93,24 @@ func main() {
 
 	destination := selectDestination(flag.Arg(1), source)
 	fmt.Printf("Saving to %s\n", destination)
-	err = ffmpeg.FindCrop(ctx, info)
+	if *cropFlag {
+		err = ffmpeg.FindCrop(ctx, info)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	pass1 := make(chan progress.Report)
+	err = ffmpeg.Pass1(ctx, info, pass1)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = ffmpeg.Pass1(ctx, info)
+	progress.PrintProgress("Pass 1", pass1)
+
+	pass2 := make(chan progress.Report)
+	err = ffmpeg.Pass2(ctx, info, destination, pass2)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = ffmpeg.Pass2(ctx, info, destination)
-	if err != nil {
-		log.Fatal(err)
-	}
+	progress.PrintProgress("Pass 2", pass2)
 }

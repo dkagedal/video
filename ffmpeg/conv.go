@@ -10,12 +10,18 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
+	"video/progress"
 	"video/stream"
 )
 
 var (
-	progressRe = regexp.MustCompile(`frame=\s*(\d+) fps=\s*(\d+(?:\.\d+)?) q=(\d+\.\d+) size=\s*(\d+kB) time=(\d\d:\d\d:\d\d\.\d\d) bitrate=\s*(\d+\.\d+)kbits/s speed=(\d+\.\d+)x\s*\r`)
+	progressRe = regexp.MustCompile(`frame=\s*(\d+) ` +
+		`fps=\s*(\S+) ` +
+		`q=\s*(\S+) ` +
+		`size=\s*(\S+) ` +
+		`time=(\d\d:\d\d:\d\d\.\d\d) ` +
+		`bitrate=\s*(\S+) ` +
+		`speed=\s*\S*x\s*\r`)
 )
 
 func videoQualityArgs(cmd *[]string, fi *FileInfo, pass int) {
@@ -89,22 +95,18 @@ func tmpFilePrefix(fi *FileInfo) string {
 	return fmt.Sprintf("vp9-%d", hashString(fi.Filename))
 }
 
-type progress struct {
-	timestamp time.Duration
-	err       error
-}
-
-func readProgress(reader io.Reader, ch chan<- progress) {
+func readConversionProgress(reader io.Reader, fi FileInfo, ch chan<- progress.Report) {
 	buffer := make([]byte, 0, 4096)
 	for {
 		if sub := progressRe.FindSubmatchIndex(buffer); sub != nil {
 			match := func(i int) string {
 				return string(buffer[sub[i*2]:sub[i*2+1]])
 			}
-			p := progress{
-				timestamp: parseDuration(match(5)),
+			timestamp := parseDuration(match(5))
+			// fmt.Printf("reporting %s (%.2f)", timestamp, float64(timestamp)/float64(fi.Length))
+			ch <- progress.Report{
+				Completed: float64(timestamp) / float64(fi.Length),
 			}
-			ch <- p
 			buffer = buffer[sub[1]:]
 		} else {
 			if len(buffer) > 2048 {
@@ -122,7 +124,7 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 			buffer = append(buffer, readbuf...) // assume this is smart
 			if n == 0 {
 				if err != io.EOF {
-					ch <- progress{err: err}
+					ch <- progress.Report{Err: err}
 				}
 				close(ch)
 				return
@@ -132,14 +134,8 @@ func readProgress(reader io.Reader, ch chan<- progress) {
 	}
 }
 
-func progressBar(progress float64) string {
-	done := "####################"
-	notDone := "...................."
-	doneCount := int(progress * 20)
-	return fmt.Sprintf("[%s%s] %3d%%", done[:doneCount], notDone[doneCount:], int(progress*100))
-}
-
-func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
+func start(cmd *exec.Cmd, ch chan<- progress.Report, reader progress.Reader) error {
+	fmt.Print("starting...")
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		fmt.Printf("\n")
@@ -149,22 +145,7 @@ func runWithProgress(prefix string, fi FileInfo, cmd *exec.Cmd) error {
 		fmt.Printf("\n")
 		return err
 	}
-	ch := make(chan progress)
-	go readProgress(stderr, ch)
-	spinner := []string{".", " "}
-	i := 0
-	start := time.Now()
-	for p := range ch {
-		if p.err != nil {
-			fmt.Printf("\n")
-			return p.err
-		}
-		progress := float64(p.timestamp) / float64(fi.Length)
-		eta := time.Duration(float64(time.Since(start).Nanoseconds()) / progress)
-		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, progressBar(progress), spinner[i], eta.Truncate(time.Second))
-		i = (i + 1) % len(spinner)
-	}
-	fmt.Printf("\r\033[K%s%s\n", prefix, progressBar(1.0))
+	go reader(stderr, ch)
 	return nil
 }
 
@@ -184,8 +165,7 @@ func FindCrop(ctx context.Context, fi FileInfo) error {
 	return cmd.Run()
 }
 
-func Pass1(ctx context.Context, fi FileInfo) error {
-	fmt.Printf("Pass 1: ")
+func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) error {
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
@@ -197,10 +177,12 @@ func Pass1(ctx context.Context, fi FileInfo) error {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	return runWithProgress("Pass 1: ", fi, cmd)
+	return start(cmd, ch, func(reader io.Reader, ch chan<- progress.Report) {
+		readConversionProgress(reader, fi, ch)
+	})
 }
 
-func Pass2(ctx context.Context, fi FileInfo, destination string) error {
+func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progress.Report) error {
 	fmt.Printf("Pass 2: ")
 	args := []string{
 		"-i", fi.Filename,
@@ -227,5 +209,7 @@ func Pass2(ctx context.Context, fi FileInfo, destination string) error {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	return runWithProgress("Pass 2: ", fi, cmd)
+	return start(cmd, ch, func(reader io.Reader, ch chan<- progress.Report) {
+		readConversionProgress(reader, fi, ch)
+	})
 }
