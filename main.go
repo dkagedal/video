@@ -101,16 +101,10 @@ func main() {
 	}
 
 	pass1 := make(chan progress.Report)
-	err = ffmpeg.Pass1(ctx, info, pass1)
-	if err != nil {
-		log.Fatal(err)
-	}
+	go ffmpeg.Pass1(ctx, info, pass1)
 	progress.PrintProgress("Pass 1", pass1)
 
 	pass2 := make(chan progress.Report)
-	err = ffmpeg.Pass2(ctx, info, destination, pass2)
-	if err != nil {
-		log.Fatal(err)
-	}
+	go ffmpeg.Pass2(ctx, info, destination, pass2)
 	progress.PrintProgress("Pass 2", pass2)
 }

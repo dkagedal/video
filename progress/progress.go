@@ -34,11 +34,14 @@ func PrintProgress(name string, ch <-chan Report) error {
 			fmt.Printf("\n")
 			return p.Err
 		}
-		fmt.Printf("<%#v>", p)
+		eta := "??"
 		timePassed := time.Since(start)
-		estimatedTotalTime := time.Duration(float64(timePassed.Nanoseconds()) / p.Completed)
-		timeLeft := estimatedTotalTime - timePassed
-		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, bar(p.Completed), spinner[i], timeLeft.Truncate(time.Second))
+		if timePassed > 5*time.Second {
+			estimatedTotalTime := time.Duration(float64(timePassed.Nanoseconds()) / p.Completed)
+			timeLeft := estimatedTotalTime - timePassed
+			eta = timeLeft.Truncate(time.Second).String()
+		}
+		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, bar(p.Completed), spinner[i], eta)
 		i = (i + 1) % len(spinner)
 	}
 	fmt.Printf("\r\033[K%s%s   Total time %s\n", prefix, bar(1.0), time.Since(start).Truncate(time.Second))

@@ -134,19 +134,17 @@ func readConversionProgress(reader io.Reader, fi FileInfo, ch chan<- progress.Re
 	}
 }
 
-func start(cmd *exec.Cmd, ch chan<- progress.Report, reader progress.Reader) error {
-	fmt.Print("starting...")
+func start(cmd *exec.Cmd) (io.Reader, error) {
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		fmt.Printf("\n")
-		return err
+		return nil, err
 	}
 	if err = cmd.Start(); err != nil {
 		fmt.Printf("\n")
-		return err
+		return nil, err
 	}
-	go reader(stderr, ch)
-	return nil
+	return stderr, nil
 }
 
 func FindCrop(ctx context.Context, fi FileInfo) error {
@@ -165,7 +163,8 @@ func FindCrop(ctx context.Context, fi FileInfo) error {
 	return cmd.Run()
 }
 
-func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) error {
+func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) {
+	defer close(ch)
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
@@ -177,12 +176,16 @@ func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) error {
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	return start(cmd, ch, func(reader io.Reader, ch chan<- progress.Report) {
-		readConversionProgress(reader, fi, ch)
-	})
+	output, err := start(cmd)
+	if err != nil {
+		ch <- progress.Report{Err: err}
+		return
+	}
+	readConversionProgress(output, fi, ch)
 }
 
-func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progress.Report) error {
+func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progress.Report) {
+	defer close(ch)
 	fmt.Printf("Pass 2: ")
 	args := []string{
 		"-i", fi.Filename,
@@ -209,7 +212,10 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progr
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
 	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	return start(cmd, ch, func(reader io.Reader, ch chan<- progress.Report) {
-		readConversionProgress(reader, fi, ch)
-	})
+	output, err := start(cmd)
+	if err != nil {
+		ch <- progress.Report{Err: err}
+		return
+	}
+	readConversionProgress(output, fi, ch)
 }
