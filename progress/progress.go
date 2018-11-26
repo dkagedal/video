@@ -8,6 +8,7 @@ import (
 
 type Report struct {
 	Completed float64 // 0.0 <= Completed <= 1.0
+	Status    string
 	Err       error
 }
 
@@ -29,6 +30,7 @@ func PrintProgress(name string, ch <-chan Report) error {
 	spinner := []string{".", " "}
 	i := 0
 	start := time.Now()
+	status := ""
 	for p := range ch {
 		if p.Err != nil {
 			fmt.Printf("\n")
@@ -41,9 +43,10 @@ func PrintProgress(name string, ch <-chan Report) error {
 			timeLeft := estimatedTotalTime - timePassed
 			eta = timeLeft.Truncate(time.Second).String()
 		}
-		fmt.Printf("\r\033[K%s%s %s ETA %s", prefix, bar(p.Completed), spinner[i], eta)
+		fmt.Printf("\r\033[K%s%s %s ETA %s %s", prefix, bar(p.Completed), spinner[i], eta, p.Status)
 		i = (i + 1) % len(spinner)
+		status = p.Status
 	}
-	fmt.Printf("\r\033[K%s%s   Total time %s\n", prefix, bar(1.0), time.Since(start).Truncate(time.Second))
+	fmt.Printf("\r\033[K%s%s   %s (%s)\n", prefix, bar(1.0), status, time.Since(start).Truncate(time.Second))
 	return nil
 }

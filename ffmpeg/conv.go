@@ -1,12 +1,13 @@
 package ffmpeg
 
 import (
+	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"log"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -15,6 +16,9 @@ import (
 )
 
 var (
+	showCmdFlag = flag.Bool("showcmd", false, "Show the commands being run.")
+
+	cropRe     = regexp.MustCompile(`crop=(\d+:\d+:\d+:\d+)`)
 	progressRe = regexp.MustCompile(`frame=\s*(\d+) ` +
 		`fps=\s*(\S+) ` +
 		`q=\s*(\S+) ` +
@@ -24,7 +28,7 @@ var (
 		`speed=\s*\S*x\s*\r`)
 )
 
-func videoQualityArgs(cmd *[]string, fi *FileInfo, pass int) {
+func videoQualityArgs(cmd *[]string, fi *FileInfo, cropArg string, pass int) {
 	var targetrate string
 	var minrate string
 	var maxrate string
@@ -83,6 +87,11 @@ func videoQualityArgs(cmd *[]string, fi *FileInfo, pass int) {
 		"-tile-columns", tileColumns, "-threads", threads,
 		"-speed", speed,
 	)
+	if cropArg != "" {
+		*cmd = append(*cmd,
+			"-filter:v", "crop="+cropArg,
+		)
+	}
 }
 
 func hashString(s string) uint32 {
@@ -126,7 +135,6 @@ func readConversionProgress(reader io.Reader, fi FileInfo, ch chan<- progress.Re
 				if err != io.EOF {
 					ch <- progress.Report{Err: err}
 				}
-				close(ch)
 				return
 			}
 		}
@@ -147,24 +155,46 @@ func start(cmd *exec.Cmd) (io.Reader, error) {
 	return stderr, nil
 }
 
-func FindCrop(ctx context.Context, fi FileInfo) error {
-	fmt.Printf("Crop:   ")
+func FindCrop(ctx context.Context, fi FileInfo, cropArg *string, ch chan<- progress.Report) {
+	defer close(ch)
+	ch <- progress.Report{Completed: 0.0}
 	args := []string{
+		"-ss", "00:01:00", // Skip one minute into the movie
 		"-i", fi.Filename,
-		"-t", "10", // stop after 10 seconds
+		"-t", "10", // stop after 30 seconds
 		"-vf", "cropdetect",
 		"-f", "null",
 		"-",
 	}
-	fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	if *showCmdFlag {
+		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	//return runWithProgress("Crop:   ", fi, cmd)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	output, err := start(cmd)
+	if err != nil {
+		ch <- progress.Report{Err: err}
+		return
+	}
+
+	scanner := bufio.NewScanner(output)
+	for scanner.Scan() {
+		if sub := cropRe.FindStringSubmatch(scanner.Text()); sub != nil {
+			*cropArg = sub[1]
+			ch <- progress.Report{Status: *cropArg}
+		}
+	}
+	if err = scanner.Err(); err != nil {
+		ch <- progress.Report{Err: err}
+	}
+	if err = cmd.Wait(); err != nil {
+		ch <- progress.Report{Err: err}
+	}
 }
 
-func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) {
+// Pass1 runs the first pass of a two pass transcoding.
+func Pass1(ctx context.Context, fi FileInfo, cropArg string, ch chan<- progress.Report) {
 	defer close(ch)
+	ch <- progress.Report{Completed: 0.0}
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
@@ -172,9 +202,11 @@ func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) {
 		// Copy streams by default, eg subtitles.
 		"-c", "copy",
 	}
-	videoQualityArgs(&args, &fi, 1)
+	videoQualityArgs(&args, &fi, cropArg, 1)
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
-	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	if *showCmdFlag {
+		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	output, err := start(cmd)
 	if err != nil {
@@ -182,11 +214,15 @@ func Pass1(ctx context.Context, fi FileInfo, ch chan<- progress.Report) {
 		return
 	}
 	readConversionProgress(output, fi, ch)
+	if err = cmd.Wait(); err != nil {
+		ch <- progress.Report{Err: err}
+	}
 }
 
-func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progress.Report) {
+// Pass2 runs the second pass of a two pass transcoding.
+func Pass2(ctx context.Context, fi FileInfo, destination string, cropArg string, ch chan<- progress.Report) {
 	defer close(ch)
-	fmt.Printf("Pass 2: ")
+	ch <- progress.Report{Completed: 0.0}
 	args := []string{
 		"-i", fi.Filename,
 		// Process all streams.
@@ -194,7 +230,7 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progr
 		// Copy streams by default, eg subtitles.
 		"-c", "copy",
 	}
-	videoQualityArgs(&args, &fi, 2)
+	videoQualityArgs(&args, &fi, cropArg, 2)
 	args = append(
 		args,
 		// Use OPUS for audio.
@@ -210,7 +246,9 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progr
 		}
 	}
 	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
-	// fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	if *showCmdFlag {
+		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
+	}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	output, err := start(cmd)
 	if err != nil {
@@ -218,4 +256,7 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, ch chan<- progr
 		return
 	}
 	readConversionProgress(output, fi, ch)
+	if err = cmd.Wait(); err != nil {
+		ch <- progress.Report{Err: err}
+	}
 }

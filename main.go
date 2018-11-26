@@ -60,7 +60,7 @@ func selectDestination(destDir string, source string) string {
 
 	for _, file := range files {
 		if file.Name() == filename {
-			log.Fatal("File %v already exists", destination)
+			log.Fatal("File already exists: ", destination)
 		}
 	}
 	return destination
@@ -93,18 +93,27 @@ func main() {
 
 	destination := selectDestination(flag.Arg(1), source)
 	fmt.Printf("Saving to %s\n", destination)
+
+	cropArg := ""
 	if *cropFlag {
-		err = ffmpeg.FindCrop(ctx, info)
+		crop := make(chan progress.Report)
+		go ffmpeg.FindCrop(ctx, info, &cropArg, crop)
+		err = progress.PrintProgress("Crop", crop)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	pass1 := make(chan progress.Report)
-	go ffmpeg.Pass1(ctx, info, pass1)
-	progress.PrintProgress("Pass 1", pass1)
+	go ffmpeg.Pass1(ctx, info, cropArg, pass1)
+	err = progress.PrintProgress("Pass 1", pass1)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	pass2 := make(chan progress.Report)
-	go ffmpeg.Pass2(ctx, info, destination, pass2)
-	progress.PrintProgress("Pass 2", pass2)
+	go ffmpeg.Pass2(ctx, info, destination, cropArg, pass2)
+	if err = progress.PrintProgress("Pass 2", pass2); err != nil {
+		log.Fatal(err)
+	}
 }
