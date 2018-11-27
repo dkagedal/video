@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -73,6 +74,16 @@ func Probe(ctx context.Context, filename string) (FileInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+// The string to pass to the -passlogfile ffmpeg flag.
+func (fi *FileInfo) passlogfile() string {
+	return fmt.Sprintf("vp9-%d", hashString(fi.Filename))
+}
+
+// The file name of the multipass log.
+func (fi *FileInfo) Pass1Logfile() string {
+	return fi.passlogfile() + "-0.log"
 }
 
 func (fi *FileInfo) fileResolution() stream.ResolutionString {

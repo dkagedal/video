@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/ioutil"
 	"log"
 	"os/exec"
 	"regexp"
@@ -100,10 +101,6 @@ func hashString(s string) uint32 {
 	return alg.Sum32()
 }
 
-func tmpFilePrefix(fi *FileInfo) string {
-	return fmt.Sprintf("vp9-%d", hashString(fi.Filename))
-}
-
 func readConversionProgress(reader io.Reader, fi FileInfo, ch chan<- progress.Report) {
 	buffer := make([]byte, 0, 4096)
 	for {
@@ -148,11 +145,16 @@ func start(cmd *exec.Cmd) (io.Reader, error) {
 		fmt.Printf("\n")
 		return nil, err
 	}
+	cmdlog, err := ioutil.TempFile("", "ffmpeg-*.log")
+	if err != nil {
+		fmt.Printf("\n")
+		return nil, fmt.Errorf("Failed to open log file: %v", err)
+	}
 	if err = cmd.Start(); err != nil {
 		fmt.Printf("\n")
 		return nil, err
 	}
-	return stderr, nil
+	return io.TeeReader(stderr, cmdlog), nil
 }
 
 func FindCrop(ctx context.Context, fi FileInfo, cropArg *string, ch chan<- progress.Report) {
@@ -203,7 +205,7 @@ func Pass1(ctx context.Context, fi FileInfo, cropArg string, ch chan<- progress.
 		"-c", "copy",
 	}
 	videoQualityArgs(&args, &fi, cropArg, 1)
-	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
+	args = append(args, "-passlogfile", fi.passlogfile(), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	if *showCmdFlag {
 		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	}
@@ -245,7 +247,7 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, cropArg string,
 			args = append(args, "-filter:"+s.Id, "aformat=channel_layouts=5.1")
 		}
 	}
-	args = append(args, "-passlogfile", tmpFilePrefix(&fi), "-pass", "2", destination)
+	args = append(args, "-passlogfile", fi.passlogfile(), "-pass", "2", destination)
 	if *showCmdFlag {
 		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
 	}

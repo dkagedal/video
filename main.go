@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"video/ffmpeg"
 	"video/progress"
@@ -44,24 +44,32 @@ func fixExtension(filename string) string {
 	return filename[:len(filename)-4] + ".mkv"
 }
 
-func selectDestination(destDir string, source string) string {
-	sourceDir := path.Dir(source)
-	filename := path.Base(source)
-	if destDir == "" {
-		destDir = path.Join(sourceDir, "vp9")
-
+func fileExists(filename string) bool {
+	dirname, basename := filepath.Split(filename)
+	if dirname == "" {
+		dirname = "."
 	}
-	destination := path.Join(destDir, fixExtension(filename))
-
-	files, err := ioutil.ReadDir(destDir)
+	files, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, file := range files {
-		if file.Name() == filename {
-			log.Fatal("File already exists: ", destination)
+		if file.Name() == basename {
+			return true
 		}
+	}
+	return false
+}
+
+func selectDestination(destDir string, source string) string {
+	sourceDir, filename := filepath.Split(source)
+	if destDir == "" {
+		destDir = filepath.Join(sourceDir, "vp9")
+	}
+	destination := filepath.Join(destDir, fixExtension(filename))
+	if fileExists(destination) {
+		log.Fatal("File already exists: ", destination)
 	}
 	return destination
 }
@@ -93,6 +101,10 @@ func main() {
 
 	destination := selectDestination(flag.Arg(1), source)
 	fmt.Printf("Saving to %s\n", destination)
+
+	if fileExists(info.Pass1Logfile()) {
+		log.Fatalf("Remove %s to restart conversion", info.Pass1Logfile())
+	}
 
 	cropArg := ""
 	if *cropFlag {
