@@ -13,7 +13,7 @@ import (
 
 var (
 	durationRe   = regexp.MustCompile(`^  Duration: (..:..:..\...), start: 0.000000,.*$`)
-	streamRe     = regexp.MustCompile(`^ *Stream #\d+:(\d+)\((...)\): (\S+): (.*)$`)
+	streamRe     = regexp.MustCompile(`^ *Stream #\d+:(\d+)(?:\((...)\))?: (\S+): (.*)$`)
 	resolutionRe = regexp.MustCompile(`^(\d+x\d+)(?: \[.*\])$`)
 	channelsRe   = regexp.MustCompile(`^(stereo|5.1(?:\(side\))?)$`)
 )
