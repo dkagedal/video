@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	cropFlag = flag.Bool("crop", false, "Crop the video to remove black bars.")
+	cropFlag    = flag.Bool("crop", false, "Crop the video to remove black bars.")
+	restartFlag = flag.Bool("restart", false, "Run only pass 2.")
 )
 
 func checkInput(info ffmpeg.FileInfo) {
@@ -102,8 +103,15 @@ func main() {
 	destination := selectDestination(flag.Arg(1), source)
 	fmt.Printf("Saving to %s\n", destination)
 
-	if fileExists(info.Pass1Logfile()) {
-		log.Fatalf("Remove %s to restart conversion", info.Pass1Logfile())
+	pass1Logfile := info.Pass1Logfile()
+	if *restartFlag {
+		if !fileExists(pass1Logfile) {
+			log.Fatalf("No convertion to restart (%s does not exist)", pass1Logfile)
+		}
+	} else {
+		if fileExists(pass1Logfile) {
+			log.Fatalf("Remove %s to restart conversion", pass1Logfile)
+		}
 	}
 
 	cropArg := ""
@@ -116,11 +124,13 @@ func main() {
 		}
 	}
 
-	pass1 := make(chan progress.Report)
-	go ffmpeg.Pass1(ctx, info, cropArg, pass1)
-	err = progress.PrintProgress("Pass 1", pass1)
-	if err != nil {
-		log.Fatal(err)
+	if !*restartFlag {
+		pass1 := make(chan progress.Report)
+		go ffmpeg.Pass1(ctx, info, cropArg, pass1)
+		err = progress.PrintProgress("Pass 1", pass1)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	pass2 := make(chan progress.Report)
