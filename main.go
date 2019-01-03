@@ -22,6 +22,9 @@ var (
 func checkInput(info ffmpeg.FileInfo) {
 	nvideo := 0
 	for _, s := range info.Streams {
+		if s.ShouldSkip() {
+			continue
+		}
 		if s.Typ == stream.Video {
 			fmt.Printf("Video codec: %s\n", s.Codec)
 			if nvideo > 0 {

@@ -89,6 +89,9 @@ func (fi *FileInfo) Pass1Logfile() string {
 func (fi *FileInfo) fileResolution() stream.ResolutionString {
 	var resolution stream.ResolutionString
 	for _, s := range fi.Streams {
+		if s.ShouldSkip() {
+			continue
+		}
 		if s.Typ != stream.Video {
 			continue
 		}

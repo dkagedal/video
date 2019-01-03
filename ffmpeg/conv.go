@@ -205,6 +205,11 @@ func Pass1(ctx context.Context, fi FileInfo, cropArg string, ch chan<- progress.
 		"-c", "copy",
 	}
 	videoQualityArgs(&args, &fi, cropArg, 1)
+	for _, s := range fi.Streams {
+		if s.ShouldSkip() {
+			args = append(args, "-map", "-0:"+s.Id)
+		}
+	}
 	args = append(args, "-passlogfile", fi.passlogfile(), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	if *showCmdFlag {
 		fmt.Printf("$ ffmpeg '%s'\n", strings.Join(args, "' '"))
@@ -239,6 +244,9 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, cropArg string,
 		"-c:a", "libopus",
 	)
 	for _, s := range fi.Streams {
+		if s.ShouldSkip() {
+			args = append(args, "-map", "-0:"+s.Id)
+		}
 		if s.Typ == stream.Audio && s.Channels == "5.1(side)" {
 			// There is currently a bug (https://trac.ffmpeg.org/ticket/5718) in
 			// ffmpeg/libopus that makes it fail if the input channel layout is

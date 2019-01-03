@@ -26,6 +26,10 @@ type Stream struct {
 	IsDefault  bool
 }
 
+func (s *Stream) ShouldSkip() bool {
+	return s.Codec == "mjpeg"
+}
+
 const repeat = `-"-`
 
 func (r ResolutionString) Normalized() ResolutionString {
