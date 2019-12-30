@@ -18,6 +18,7 @@ import (
 
 var (
 	showCmdFlag = flag.Bool("showcmd", false, "Show the commands being run.")
+	darFlag     = flag.String("dar", "", "Display aspect ratio override.")
 
 	cropRe     = regexp.MustCompile(`crop=(\d+:\d+:\d+:\d+)`)
 	progressRe = regexp.MustCompile(`frame=\s*(\d+) ` +
@@ -209,6 +210,9 @@ func Pass1(ctx context.Context, fi FileInfo, cropArg string, ch chan<- progress.
 		if s.ShouldSkip() {
 			args = append(args, "-map", "-0:"+s.Id)
 		}
+	}
+	if *darFlag != "" {
+		args = append(args, "-vf", "setdar=dar="+*darFlag)
 	}
 	args = append(args, "-passlogfile", fi.passlogfile(), "-pass", "1", "-f", "matroska", "-y", "/dev/null")
 	if *showCmdFlag {
