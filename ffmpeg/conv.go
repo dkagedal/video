@@ -204,6 +204,8 @@ func Pass1(ctx context.Context, fi FileInfo, cropArg string, ch chan<- progress.
 		"-map", "0",
 		// Copy streams by default, eg subtitles.
 		"-c", "copy",
+		// Increase buffer.
+		"-max_muxing_queue_size", "400",
 	}
 	videoQualityArgs(&args, &fi, cropArg, 1)
 	for _, s := range fi.Streams {
@@ -240,6 +242,8 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, cropArg string,
 		"-map", "0",
 		// Copy streams by default, eg subtitles.
 		"-c", "copy",
+		// Increase buffer.
+		"-max_muxing_queue_size", "400",
 	}
 	videoQualityArgs(&args, &fi, cropArg, 2)
 	args = append(
@@ -258,6 +262,9 @@ func Pass2(ctx context.Context, fi FileInfo, destination string, cropArg string,
 			// to "5.1" in those audio streams.
 			args = append(args, "-filter:"+s.Id, "aformat=channel_layouts=5.1")
 		}
+	}
+	if *darFlag != "" {
+		args = append(args, "-vf", "setdar=dar="+*darFlag)
 	}
 	args = append(args, "-passlogfile", fi.passlogfile(), "-pass", "2", destination)
 	if *showCmdFlag {
